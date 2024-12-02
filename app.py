@@ -9,7 +9,7 @@ st.set_page_config(page_title="Chat with PDF")
 
 # Google Gemini API Key (directly within the script)
 GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"
-API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key={GENAI_API_KEY}"
+API_URL = f"https://generativelanguage.googleapis.com/v1beta2/models/text-bison-001:generateMessage?key={GENAI_API_KEY}"
 
 # Function to extract text from uploaded PDFs
 def extract_text_from_pdfs(pdf_files):
@@ -28,10 +28,9 @@ def extract_text_from_pdfs(pdf_files):
 def query_gemini(system_prompt, user_prompt):
     payload = json.dumps({
         "prompt": {
-            "context": system_prompt,
-            "examples": [],
             "messages": [
-                {"author": "0", "content": user_prompt}
+                {"author": "system", "content": system_prompt},
+                {"author": "user", "content": user_prompt}
             ]
         }
     })
@@ -41,10 +40,22 @@ def query_gemini(system_prompt, user_prompt):
 
     try:
         response = requests.post(API_URL, headers=headers, data=payload)
+        response.raise_for_status()  # Raise an error for HTTP errors
         response_data = response.json()
-        return response_data["candidates"][0]["content"]
+        
+        # Debugging: Log the full response
+        st.write("Full API Response:", response_data)
+        
+        # Extract and return the content of the first candidate's message
+        return response_data["candidates"][0]["message"]["content"]
+    except requests.exceptions.RequestException as e:
+        st.error(f"HTTP Error querying Gemini: {e}")
+        return None
+    except KeyError as e:
+        st.error(f"Unexpected API response structure: {e}")
+        return None
     except Exception as e:
-        st.error(f"Error querying Gemini: {e}")
+        st.error(f"An unexpected error occurred: {e}")
         return None
 
 # Main function
