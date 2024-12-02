@@ -10,7 +10,7 @@ from typing import Optional
 st.set_page_config(page_title="Chat with PDF")
 
 # Constants
-GENAI_API_KEY = "YOUR_API_KEY"  # Move this to environment variables in production
+GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"  # Move this to environment variables in production
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key={GENAI_API_KEY}"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
