@@ -1,11 +1,6 @@
 import streamlit as st
 from PyPDF2 import PdfReader
 import google.generativeai as genai
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS  # Updated import
-from langchain.prompts import PromptTemplate
-from langchain.chains.question_answering import load_qa_chain
 from io import BytesIO
 
 # Configure Streamlit
@@ -29,74 +24,53 @@ def getPdfText(pdf_docs):
             st.error(f"Error reading PDF: {e}")
     return text
 
-# Split the extracted text into manageable chunks
-def getTextChunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_text(text)
-    return chunks
+# Function to query the LLM with extracted text
+def query_llm_with_text(extracted_text, user_question):
+    prompt = f"""
+You are an intelligent assistant. Use the provided context to answer the user's question as accurately as possible. 
+If the context does not contain the answer, respond with: "The answer is not available in the provided context." Do not guess or fabricate information.
 
-# Create a FAISS vector store
-def get_vector_store(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-    vector_store.save_local("faiss_index")
-    return vector_store
+Context:
+{extracted_text}
 
-# Create a conversational chain
-def get_conversational_chain():
-    Prompt_Template = """ 
-Answer the question as detailed as possible based on the provided context. 
-If the context does not contain the information, respond with "Answer not available in the context." 
-Do not fabricate an answer.\n\n
-Context:\n {context}\n
-Question: \n{question}\n
+Question:
+{user_question}
+
 Answer:
 """
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
-    prompt = PromptTemplate(template=Prompt_Template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    return chain
-
-# Handle user input and respond
-def user_input(user_question):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     try:
-        new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-        docs = new_db.similarity_search(user_question)
-        chain = get_conversational_chain()
-        response = chain(
-            {
-                "input_documents": docs, "question": user_question
-            }, return_only_outputs=True)
-        st.write("Response:", response)  # Print the entire response object
-        st.write("Reply: ", response.get("output_text", "No output text found"))
-    except ValueError as e:
-        st.error(f"Error loading FAISS index: {e}")
+        response = genai.generate_text(model="gemini-1.5-flash", prompt=prompt, temperature=0.3)
+        return response.result
     except Exception as e:
-        st.error(f"Unexpected error: {e}")
+        st.error(f"Error querying the LLM: {e}")
+        return None
 
 # Main function
 def main():
     st.title("Chat with PDF")
-    user_question = st.text_input("Ask a question based on the uploaded PDF(s)")
-    if user_question:
-        user_input(user_question)
+    st.header("Upload your PDFs and ask questions")
 
-    with st.sidebar:
-        st.title("Menu")
-        pdf_docs = st.file_uploader("Upload your PDF files and Submit", type="pdf", accept_multiple_files=True)
-        if st.button("Submit & Process"):
+    user_question = st.text_input("Ask a question based on the uploaded PDF(s)")
+    pdf_docs = st.file_uploader("Upload your PDF files", type="pdf", accept_multiple_files=True)
+
+    if st.button("Submit & Process"):
+        if pdf_docs and user_question:
             with st.spinner("Processing..."):
-                if pdf_docs:
-                    try:
-                        raw_text = getPdfText(pdf_docs)
-                        text_chunks = getTextChunks(raw_text)
-                        get_vector_store(text_chunks)
-                        st.success("Done! You can now ask questions.")
-                    except Exception as e:
-                        st.error(f"Processing error: {e}")
-                else:
-                    st.error("Please upload at least one PDF file.")
+                try:
+                    raw_text = getPdfText(pdf_docs)
+                    if raw_text.strip():
+                        st.write("Querying the LLM with extracted text...")
+                        llm_response = query_llm_with_text(raw_text, user_question)
+                        if llm_response:
+                            st.write(f"Answer: {llm_response}")
+                        else:
+                            st.error("No response from the LLM.")
+                    else:
+                        st.error("No text could be extracted from the uploaded PDF(s).")
+                except Exception as e:
+                    st.error(f"Processing error: {e}")
+        else:
+            st.error("Please upload PDF files and enter a question.")
 
 if __name__ == "__main__":
     main()
