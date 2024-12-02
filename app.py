@@ -1,21 +1,14 @@
 import streamlit as st
-import requests
 import json
-import time
 from PyPDF2 import PdfReader
 from io import BytesIO
+from openai import OpenAI
+import time
 from typing import Optional
 
 # Configure Streamlit
-st.set_page_config(page_title="Chat with PDF")
+st.set_page_config(page_title="Chat with PDF using GPT-4")
 
-# Constants
-GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"  # Move this to environment variables in production
-API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key={GENAI_API_KEY}"
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-
-# Function to extract text from uploaded PDFs
 def extract_text_from_pdfs(pdf_files) -> str:
     text = ""
     for pdf in pdf_files:
@@ -23,137 +16,108 @@ def extract_text_from_pdfs(pdf_files) -> str:
             pdf_reader = PdfReader(BytesIO(pdf.read()))
             for page in pdf_reader.pages:
                 page_text = page.extract_text() or ""
-                text += page_text + "\n\n"  # Add spacing between pages
+                text += page_text + "\n\n"
         except Exception as e:
             st.error(f"Error reading PDF {pdf.name}: {str(e)}")
     return text.strip()
 
-# Function to query the Gemini API with rate limiting and retries
-def query_gemini(system_prompt: str, user_prompt: str) -> Optional[str]:
-    payload = {
-        "prompt": {
-            "context": system_prompt,
-            "examples": [],
-            "messages": [
-                {"author": "0", "content": user_prompt}
-            ]
-        }
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = requests.post(
-                API_URL, 
-                headers=headers, 
-                json=payload,  # Using json parameter for automatic serialization
-                timeout=10  # Add timeout
-            )
-            
-            # Handle rate limiting
-            if response.status_code == 429:
-                wait_time = int(response.headers.get('Retry-After', RETRY_DELAY))
-                st.warning(f"Rate limit reached. Waiting {wait_time} seconds...")
-                time.sleep(wait_time)
-                continue
-                
-            response.raise_for_status()
-            response_data = response.json()
-            return response_data["candidates"][0]["content"]
-            
-        except requests.exceptions.HTTPError as http_err:
-            if attempt == MAX_RETRIES - 1:  # Last attempt
-                st.error(f"HTTP error occurred: {http_err}")
-            else:
-                time.sleep(RETRY_DELAY)
-                
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error querying Gemini: {str(e)}")
-            break
-            
-    return None
+def query_gpt4(system_prompt: str, user_prompt: str, gptkey: str, model="gpt-4") -> Optional[str]:
+    try:
+        client = OpenAI(api_key=gptkey)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            model=model,
+            temperature=0.7,
+            max_tokens=1000
+        ).choices[0]
+        
+        return chat_completion.message.content
+        
+    except Exception as e:
+        st.error(f"Error querying GPT-4: {str(e)}")
+        return None
 
-# Function to chunk text if it's too long
-def chunk_text(text: str, chunk_size: int = 4000) -> list:
-    words = text.split()
+def chunk_text(text: str, max_chunk_size: int = 6000) -> list:
+    sentences = text.split('. ')
     chunks = []
     current_chunk = []
     current_length = 0
     
-    for word in words:
-        if current_length + len(word) + 1 > chunk_size:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = [word]
-            current_length = len(word)
+    for sentence in sentences:
+        sentence_length = len(sentence)
+        if current_length + sentence_length > max_chunk_size:
+            chunks.append('. '.join(current_chunk) + '.')
+            current_chunk = [sentence]
+            current_length = sentence_length
         else:
-            current_chunk.append(word)
-            current_length += len(word) + 1
+            current_chunk.append(sentence)
+            current_length += sentence_length
             
     if current_chunk:
-        chunks.append(" ".join(current_chunk))
+        chunks.append('. '.join(current_chunk) + '.')
     return chunks
 
 def main():
-    st.title("Chat with PDF")
-    st.write("Upload PDFs, ask questions, and have a conversation!")
+    st.title("Chat with PDF using GPT-4")
+    st.write("Upload PDFs and ask questions about their content!")
 
-    # Sidebar for uploading PDF files
+    # API Key input in sidebar
     with st.sidebar:
+        st.title("Configuration")
+        api_key = st.text_input("Enter your OpenAI API Key", type="password")
         st.title("Upload PDF Files")
         pdf_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
         
         if pdf_files:
             with st.spinner("Extracting text from PDFs..."):
                 extracted_text = extract_text_from_pdfs(pdf_files)
-                # Store text chunks instead of full text
                 st.session_state["context_chunks"] = chunk_text(extracted_text)
                 st.success("Text extraction complete!")
 
-    # Initialize conversation history
+    # Initialize chat history
     if "messages" not in st.session_state:
-        st.session_state["messages"] = []
+        st.session_state.messages = []
 
-    # Display conversation history
-    for msg in st.session_state.get("messages", []):
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    # User input for chat
-    user_input = st.chat_input("Type your message here:")
-    
-    if user_input:
-        # Show user message
+    # Chat input
+    if prompt := st.chat_input("What would you like to know about the PDF?"):
+        if not api_key:
+            st.error("Please enter your OpenAI API key in the sidebar.")
+            return
+            
+        # Append user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
         with st.chat_message("user"):
-            st.write(user_input)
-        
-        # Append user input to conversation history
-        st.session_state["messages"].append({"role": "user", "content": user_input})
-        
-        # Process each chunk of context
-        full_response = ""
-        chunks = st.session_state.get("context_chunks", [""])
-        
+            st.markdown(prompt)
+
+        # Get response from GPT-4
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
+                chunks = st.session_state.get("context_chunks", [""])
+                best_response = None
+
                 for chunk in chunks:
-                    system_prompt = f"""
-                    You are a helpful assistant. Use the provided context to answer questions accurately and concisely.
-                    If the context does not contain the required information, respond with "The information is not available in the provided context."
-                    Context: {chunk}
-                    """
+                    system_prompt = f"You are a helpful assistant. Answer questions based on the following context: {chunk}"
+                    response = query_gpt4(system_prompt, prompt, api_key)
                     
-                    response = query_gemini(system_prompt, user_input)
-                    if response and "not available in the provided context" not in response:
-                        full_response = response
+                    if response and "information is not available" not in response.lower():
+                        best_response = response
                         break
                 
-                if not full_response:
-                    full_response = "The information is not available in the provided context."
-                
-                st.write(full_response)
-                st.session_state["messages"].append({"role": "assistant", "content": full_response})
+                if not best_response:
+                    best_response = "I couldn't find relevant information in the provided documents. Could you please rephrase your question or ask about something else?"
+
+                st.markdown(best_response)
+                st.session_state.messages.append({"role": "assistant", "content": best_response})
 
 if __name__ == "__main__":
     main()
