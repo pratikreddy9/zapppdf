@@ -1,14 +1,15 @@
 import streamlit as st
+import requests
+import json
 from PyPDF2 import PdfReader
-import google.generativeai as genai
 from io import BytesIO
 
 # Configure Streamlit
-st.set_page_config(page_title="Simple Conversational Bot")
+st.set_page_config(page_title="Chat with PDF")
 
 # Google Gemini API Key (directly within the script)
 GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"
-genai.configure(api_key=GENAI_API_KEY)
+API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key={GENAI_API_KEY}"
 
 # Function to extract text from uploaded PDFs
 def extract_text_from_pdfs(pdf_files):
@@ -23,19 +24,32 @@ def extract_text_from_pdfs(pdf_files):
             st.error(f"Error reading PDF: {e}")
     return text
 
-# Function to query the Gemini LLM
-def query_gemini(messages):
+# Function to query the Gemini API
+def query_gemini(system_prompt, user_prompt):
+    payload = json.dumps({
+        "prompt": {
+            "context": system_prompt,
+            "examples": [],
+            "messages": [
+                {"author": "0", "content": user_prompt}
+            ]
+        }
+    })
+    headers = {
+        "Content-Type": "application/json"
+    }
+
     try:
-        # Use `generate_chat` instead of the incorrect `chat` method
-        response = genai.generate_chat(messages=messages, model="gemini-1.5-flash", temperature=0.3)
-        return response.messages[-1]["content"]  # Return the latest response from the assistant
+        response = requests.post(API_URL, headers=headers, data=payload)
+        response_data = response.json()
+        return response_data["candidates"][0]["content"]
     except Exception as e:
         st.error(f"Error querying Gemini: {e}")
         return None
 
 # Main function
 def main():
-    st.title("Simple Conversational Bot")
+    st.title("Chat with PDF")
     st.write("Upload PDFs, ask questions, and have a conversation!")
 
     # Sidebar for uploading PDF files
@@ -50,12 +64,10 @@ def main():
 
     # Initialize conversation history
     if "messages" not in st.session_state:
-        st.session_state["messages"] = [
-            {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."}
-        ]
+        st.session_state["messages"] = []
 
     # Display previous conversation
-    if "messages" in st.session_state:
+    if st.session_state.get("messages"):
         for msg in st.session_state["messages"]:
             if msg["role"] == "user":
                 st.markdown(f"<div style='text-align: right; color: blue;'>**You:** {msg['content']}</div>", unsafe_allow_html=True)
@@ -69,12 +81,15 @@ def main():
         st.session_state["messages"].append({"role": "user", "content": user_input})
         
         # Include context from PDFs if available
-        if "context" in st.session_state and st.session_state["context"]:
-            context_message = {"role": "system", "content": f"Context: {st.session_state['context']}"}
-            st.session_state["messages"].insert(1, context_message)
-        
+        context = st.session_state.get("context", "")
+        system_prompt = f"""
+        You are a helpful assistant. Use the provided context to answer questions accurately and concisely.
+        If the context does not contain the required information, respond with "The information is not available in the provided context."
+        Context: {context}
+        """
+
         # Query Gemini with the conversation history
-        response = query_gemini(st.session_state["messages"])
+        response = query_gemini(system_prompt, user_input)
         if response:
             st.session_state["messages"].append({"role": "assistant", "content": response})
             st.experimental_rerun()  # Refresh to display the updated conversation
