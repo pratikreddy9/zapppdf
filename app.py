@@ -61,7 +61,7 @@ def chunk_text(text: str, max_chunk_size: int = 6000) -> list:
     return chunks
 
 def main():
-    st.title("Chat with PDF using GPT-4")
+    st.title("Chat with PDF")
     st.write("Upload PDFs and ask questions about their content!")
 
     # API Key input in sidebar
