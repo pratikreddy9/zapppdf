@@ -11,7 +11,7 @@ from io import BytesIO
 # Configure Streamlit
 st.set_page_config(page_title="Chat With PDFs")
 
-# Your Google API Key
+# Your Google API Key (directly in the script)
 GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"
 genai.configure(api_key=GENAI_API_KEY)
 
@@ -23,18 +23,19 @@ def getPdfText(pdf_docs):
             pdf_reader = PdfReader(BytesIO(pdf.read()))
             for page in pdf_reader.pages:
                 page_text = page.extract_text() or ""
+                st.write(f"Extracted text: {page_text[:500]}")  # Show the first 500 characters for inspection
                 text += page_text
         except Exception as e:
             st.error(f"Error reading PDF: {e}")
     return text
 
-# Split text into chunks
+# Split the extracted text into manageable chunks
 def getTextChunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
     return chunks
 
-# Create FAISS vector store
+# Create a FAISS vector store
 def get_vector_store(text_chunks):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
@@ -67,7 +68,10 @@ def user_input(user_question):
             {
                 "input_documents": docs, "question": user_question
             }, return_only_outputs=True)
+        st.write("Response:", response)  # Print the entire response object
         st.write("Reply: ", response.get("output_text", "No output text found"))
+    except ValueError as e:
+        st.error(f"Error loading FAISS index: {e}")
     except Exception as e:
         st.error(f"Unexpected error: {e}")
 
@@ -80,7 +84,7 @@ def main():
 
     with st.sidebar:
         st.title("Menu")
-        pdf_docs = st.file_uploader("Upload your PDF files", type="pdf", accept_multiple_files=True)
+        pdf_docs = st.file_uploader("Upload your PDF files and Submit", type="pdf", accept_multiple_files=True)
         if st.button("Submit & Process"):
             with st.spinner("Processing..."):
                 if pdf_docs:
@@ -96,4 +100,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
