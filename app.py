@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 # Configure Streamlit
-st.set_page_config(page_title="Chat with PDF using GPT-4")
+st.set_page_config(page_title="Chat with PDF")
 
 def extract_text_from_pdfs(pdf_files) -> str:
     text = ""
