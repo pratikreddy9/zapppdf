@@ -1,7 +1,8 @@
-streamlit==1.37.1
-google-generativeai==0.3.0  # Ensure compatibility with Google Gemini APIs
-langchain==0.2.22  # Use the latest stable version as of your setup
-python-dotenv==1.0.0  # For loading environment variables
-PyPDF2==3.0.1  # For PDF reading
-langchain_google_genai==0.1.0  # LangChain integration for Google Generative AI
-langchain_community==0.1.0  # Updated package for FAISS and community features
+streamlit
+google-generativeai
+langchain
+python-dotenv
+PyPDF2
+faiss-cpu
+langchain_google_genai
+langchain_community
