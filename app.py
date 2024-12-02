@@ -4,73 +4,79 @@ import google.generativeai as genai
 from io import BytesIO
 
 # Configure Streamlit
-st.set_page_config(page_title="Chat With PDFs")
+st.set_page_config(page_title="Simple Conversational Bot")
 
-# Your Google API Key (directly in the script)
+# Google Gemini API Key (directly within the script)
 GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"
 genai.configure(api_key=GENAI_API_KEY)
 
-# Function to extract text from PDFs
-def getPdfText(pdf_docs):
+# Function to extract text from uploaded PDFs
+def extract_text_from_pdfs(pdf_files):
     text = ""
-    for pdf in pdf_docs:
+    for pdf in pdf_files:
         try:
             pdf_reader = PdfReader(BytesIO(pdf.read()))
             for page in pdf_reader.pages:
                 page_text = page.extract_text() or ""
-                st.write(f"Extracted text: {page_text[:500]}")  # Show the first 500 characters for inspection
                 text += page_text
         except Exception as e:
             st.error(f"Error reading PDF: {e}")
     return text
 
-# Function to query the LLM with extracted text
-def query_llm_with_text(extracted_text, user_question):
-    prompt = f"""
-You are an intelligent assistant. Use the provided context to answer the user's question as accurately as possible. 
-If the context does not contain the answer, respond with: "The answer is not available in the provided context." Do not guess or fabricate information.
-
-Context:
-{extracted_text}
-
-Question:
-{user_question}
-
-Answer:
-"""
+# Function to query the Gemini LLM
+def query_gemini(messages):
     try:
-        response = genai.generate_text(model="gemini-1.5-flash", prompt=prompt, temperature=0.3)
-        return response.result
+        response = genai.chat(messages=messages, model="gemini-1.5-flash", temperature=0.3)
+        return response.messages[-1]["content"]  # Return the latest response from the assistant
     except Exception as e:
-        st.error(f"Error querying the LLM: {e}")
+        st.error(f"Error querying Gemini: {e}")
         return None
 
 # Main function
 def main():
-    st.title("Chat with PDF")
-    st.header("Upload your PDFs and ask questions")
+    st.title("Simple Conversational Bot")
+    st.write("Upload PDFs, ask questions, and have a conversation!")
 
-    user_question = st.text_input("Ask a question based on the uploaded PDF(s)")
-    pdf_docs = st.file_uploader("Upload your PDF files", type="pdf", accept_multiple_files=True)
+    # Sidebar for uploading PDF files
+    with st.sidebar:
+        st.title("Upload PDF Files")
+        pdf_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
+        if pdf_files:
+            with st.spinner("Extracting text from PDFs..."):
+                extracted_text = extract_text_from_pdfs(pdf_files)
+                st.session_state["context"] = extracted_text
+                st.success("Text extraction complete!")
 
-    if st.button("Submit & Process"):
-        if pdf_docs and user_question:
-            with st.spinner("Processing..."):
-                try:
-                    raw_text = getPdfText(pdf_docs)
-                    if raw_text.strip():
-                        st.write("Querying the LLM with extracted text...")
-                        llm_response = query_llm_with_text(raw_text, user_question)
-                        if llm_response:
-                            st.write(f"Answer: {llm_response}")
-                        else:
-                            st.error("No response from the LLM.")
-                    else:
-                        st.error("No text could be extracted from the uploaded PDF(s).")
-                except Exception as e:
-                    st.error(f"Processing error: {e}")
-        else:
-            st.error("Please upload PDF files and enter a question.")
+    # Initialize conversation history
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [
+            {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."}
+        ]
+
+    # Display previous conversation
+    if "messages" in st.session_state:
+        for msg in st.session_state["messages"]:
+            if msg["role"] == "user":
+                st.markdown(f"<div style='text-align: right; color: blue;'>**You:** {msg['content']}</div>", unsafe_allow_html=True)
+            elif msg["role"] == "assistant":
+                st.markdown(f"<div style='text-align: left; color: green;'>**Bot:** {msg['content']}</div>", unsafe_allow_html=True)
+
+    # User input for chat
+    user_input = st.text_input("Type your message here:")
+    if user_input:
+        # Append user input to conversation history
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+        
+        # Include context from PDFs if available
+        if "context" in st.session_state and st.session_state["context"]:
+            context_message = {"role": "system", "content": f"Context: {st.session_state['context']}"}
+            st.session_state["messages"].insert(1, context_message)
+        
+        # Query Gemini with the conversation history
+        response = query_gemini(st.session_state["messages"])
+        if response:
+            st.session_state["messages"].append({"role": "assistant", "content": response})
+            st.experimental_rerun()  # Refresh to display the updated conversation
 
 if __name__ == "__main__":
     main()
