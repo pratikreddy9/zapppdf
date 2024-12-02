@@ -3,7 +3,6 @@ import json
 from PyPDF2 import PdfReader
 from io import BytesIO
 from openai import OpenAI
-import time
 from typing import Optional
 
 # Configure Streamlit
@@ -64,10 +63,11 @@ def main():
     st.title("Chat with PDF")
     st.write("Upload PDFs and ask questions about their content!")
 
-    # API Key input in sidebar
+    # Retrieve API Key from secrets
+    api_key = st.secrets["openai"]["api_key"]
+
+    # PDF upload in the sidebar
     with st.sidebar:
-        st.title("Configuration")
-        api_key = st.text_input("Enter your OpenAI API Key", type="password")
         st.title("Upload PDF Files")
         pdf_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
         
@@ -88,10 +88,6 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("What would you like to know about the PDF?"):
-        if not api_key:
-            st.error("Please enter your OpenAI API key in the sidebar.")
-            return
-            
         # Append user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
