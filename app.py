@@ -8,7 +8,7 @@ from io import BytesIO
 st.set_page_config(page_title="Chat with PDF")
 
 # Google Gemini API Key (directly within the script)
-GENAI_API_KEY = "YOUR_API_KEY"
+GENAI_API_KEY = "AIzaSyAWeNKsOj_pSoqvbsMz1tkYkGEhsJLzgR8"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GENAI_API_KEY}"
 
 # Function to extract text from uploaded PDFs
